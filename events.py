@@ -191,51 +191,84 @@ def write_json(filename, data):
     with open(filename, 'w', encoding='utf8') as f:
         json.dump(data, f, indent=4)
 
+class EventSpider:
+
+    def __init__(self, pending_host=[], pending_events=[]):
+
+        self.pending_hosts = set(pending_host)
+        self.pending_events = set(pending_events)
+
+        self.scraped_hosts = set()
+        self.scraped_events = set()
+
+        self.rotation = 1
+        self.result = []
+
+    def scrape_pendings(self, limit=50):
+
+        self.result = []
+
+        print('Extracting events...')
+        hosts = tuple(self.pending_hosts)
+        count = len(hosts)
+        for host in hosts:
+            print('Extracting host:', host, count)
+            events = scrape_events(host)
+            self.pending_events |= set(events) - self.scraped_events
+            self.pending_hosts.discard(host)
+            self.scraped_hosts.add(host)
+            count -= 1
+
+            if len(host) - count >= limit:
+                break
+
+        print('Scraping events...')
+        events = tuple(self.pending_events)
+        count = len(events)
+        for e in events:
+            print('Scraping event', e, count)
+            data = scrape_event(e)
+            self.result.append(data)
+            h_id = [ host['id'] for host in data['hosts'] ]
+            self.pending_hosts |= set(h_id) - self.scraped_hosts
+            self.pending_events.discard(e)
+            self.scraped_events.add(e)
+            count -= 1
+
+            if len(events) - count >= limit:
+                break
+
+        return self.result
+
+            
+    def expand_search(self):
+
+        self.rotation = 1
+        keep = True
+
+        while keep and \
+            ( self.pending_hosts or \
+                self.pending_events ): # Sad face
+
+            try:
+                self.scrape_pendings()
+                self.rotation += 1
+            except Exception as e:
+                print(e)
+                keep = False
+            finally:
+                filename = 'results/{}.json'.format(self.rotation)
+                write_json(filename, self.result)
+                # I should probably save state here too...
+
 def main():
 
     print('Extracting place id...')
     url = 'https://www.facebook.com/umbrellabarattherock/'
     _id = extract_place_id(url)
 
-    pending_hosts = set((_id,))
-    scraped_hosts = set()
-
-    pending_events = set()
-    scraped_events = set()
-
-    rotation = 1
-    while pending_hosts or pending_events:
-
-        result = []
-
-        print('Extracting events...')
-        hosts = tuple(pending_hosts)
-        count = len(hosts)
-        for host in hosts:
-            print('Extracting host:', host, count)
-            pending_events |= set(scrape_events(host)) - scraped_events
-            pending_hosts.discard(_id)
-            scraped_hosts.add(_id)
-            count -= 1
-
-        print('Scraping events...')
-        events = tuple(pending_events)
-        count = len(events)
-        for e in events:
-            print('Scraping event', e, count)
-            data = scrape_event(e)
-            result.append(data)
-            h_id = [ host['id'] for host in data['hosts'] ]
-            pending_hosts |= set(h_id) - scraped_hosts
-            pending_events.discard(e)
-            scraped_events.add(e)
-            count -= 1
-
-        filename = 'results/{}.json'.format(rotation)
-        write_json(filename, result)
-        # I should probably save state here too...
-
-        rotation += 1
+    spider = EventSpider(pending_host=(_id,))
+    spider.expand_search() # Keep searching until the end of the world
 
 if __name__ == '__main__':
     main()
