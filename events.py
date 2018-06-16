@@ -64,8 +64,11 @@ def scrape_event(url):
 
     # resp = requests.post(api_url, data=payload, headers=HEADERS)    
     resp = s.post(api_url, data=payload)
-    data = resp.json()
 
+    if resp.status_code != 200: 
+        return None
+
+    data = resp.json()
     hosts = extract_hosts(data)
     place = extract_place(data)
 
@@ -148,10 +151,10 @@ def scrape_events(_id):
     while next_page:
 
         resp = s.post(api_url, data=payload)
-        resp.raise_for_status()
+        if resp.status_code != 200: 
+            break
 
         data = resp.json()
-
         events = deep_get(data, 'data.page.upcoming_events')
         if events is None: break
 
@@ -228,9 +231,13 @@ class EventSpider:
         for e in events:
             print('Scraping event', e, count)
             data = scrape_event(e)
-            self.result.append(data)
-            h_id = [ host['id'] for host in data['hosts'] ]
-            self.pending_hosts |= set(h_id) - self.scraped_hosts
+            _ids = []
+
+            if data:
+                self.result.append(data)
+                _ids = [ host['id'] for host in data.get('hosts', []) ]
+
+            self.pending_hosts |= set(_ids) - self.scraped_hosts
             self.pending_events.discard(e)
             self.scraped_events.add(e)
             count -= 1
@@ -252,13 +259,13 @@ class EventSpider:
 
             try:
                 self.scrape_pendings()
-                self.rotation += 1
             except Exception as e:
                 print(e)
                 keep = False
             finally:
                 filename = 'results/{}.json'.format(self.rotation)
                 write_json(filename, self.result)
+                self.rotation += 1
                 # I should probably save state here too...
 
 def main():
