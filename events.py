@@ -2,7 +2,6 @@
 
 import requests
 import re
-import pandas
 import json
 
 from bs4 import BeautifulSoup
