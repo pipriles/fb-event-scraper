@@ -3,6 +3,8 @@
 import pandas as pd
 import json
 import sys
+import glob
+import os
 
 def read_json(filename):
 
@@ -18,18 +20,27 @@ def read_json(filename):
 
     return frame, hosts
 
+def read_hosts(filename):
+
+    data = pd.read_json(filename, dtype=False)
+    columns = [ 'id', 'url', 'email', 'phone' ]
+    websites = data.websites.apply(pd.Series)
+    return pd.concat([data[columns], websites], axis=1)
+
 def main():
 
-    if len(sys.argv) < 2:
-        print('Usage: ./convert.py [FILANAME] [FILENAME]...')
+    if len(sys.argv) != 2:
+        print('Usage: ./convert.py [DIRECTORY]')
         return
 
-    files = sys.argv[1:]
+    directory = sys.argv[1]
+    efiles = glob.glob(os.path.join(directory, 'events_*.json'))
+    hfiles = glob.glob(os.path.join(directory, 'hosts_*.json'))
 
     event_frames = []
     hosts_frames = []
 
-    for f in files:
+    for f in efiles:
         events, hosts = read_json(f) 
 
         keys = list(hosts.columns)
@@ -46,8 +57,33 @@ def main():
     frame2 = frame2.drop_duplicates(subset=['id', 'event_id'])
 
     frame1.to_csv('events.csv')
-    frame2.to_csv('hosts.csv')
+    frame2.to_csv('relation.csv')
 
+    # Read each host file
+    hosts = pd.concat([ read_hosts(f) for f in hfiles ], sort=False)
+
+    # There should not be duplicates here
+    hosts = hosts.drop_duplicates(subset=['id'])
+    hosts.set_index('id', inplace=True)
+
+    # Use hosts info from events and drop duplicates
+    from_events = frame2.drop_duplicates(subset=['id'])
+    from_events.set_index('id', inplace=True)
+
+    columns = [ 'name', 'category', 'profilePicture' ]
+
+    # Create new info data frame to add it after to the result
+    info = pd.DataFrame(index=hosts.index, columns=columns)
+    indexes = info.index
+
+    for index in from_events.index:
+        if index in indexes: # Check if index exists in info
+            info.loc[index] = from_events.loc[index, columns]
+
+    # Concat info of the hosts from the events
+    s_hosts = pd.concat([hosts, info], axis=1)
+    s_hosts.to_csv('hosts.csv')
 
 if __name__ == '__main__':
     main()
+
