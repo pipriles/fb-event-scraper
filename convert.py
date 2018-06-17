@@ -56,8 +56,12 @@ def main():
     frame2 = pd.concat(hosts_frames)
     frame2 = frame2.drop_duplicates(subset=['id', 'event_id'])
 
-    frame1.to_csv('events.csv')
-    frame2.to_csv('relation.csv')
+    columns = [ 'id', 'title', 'date', 'address', 'email', 'phone', 'page' ]
+    frame1[columns].to_csv('events.csv', index=False)
+
+    columns = [ 'event_id', 'id', 'url', 'name', 'category',
+            'profilePicture' ]
+    frame2[columns].to_csv('relation.csv', index=False)
 
     # Read each host file
     hosts = pd.concat([ read_hosts(f) for f in hfiles ], sort=False)
@@ -81,8 +85,13 @@ def main():
             info.loc[index] = from_events.loc[index, columns]
 
     # Concat info of the hosts from the events
+    websites_columns = hosts.columns[3:]
     s_hosts = pd.concat([hosts, info], axis=1)
-    s_hosts.to_csv('hosts.csv')
+
+    columns = [ 'url', 'name', 'email', 'phone', 'category', 
+            'profilePicture' ] + list(websites_columns)
+
+    s_hosts[columns].to_csv('hosts.csv')
 
 if __name__ == '__main__':
     main()

@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+# I have to add random change user agent
+# And maybe a way rotate ip
+# Find out why script freezes
+# - Maybe a facebook ban
+
 import requests
 import re
 import json
@@ -7,6 +12,7 @@ import urllib
 
 from bs4 import BeautifulSoup
 
+TIMEOUT = 5
 HEADERS = { 
     'accept-language': 'en-US,en;q=0.9', 
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36', 
@@ -64,7 +70,7 @@ def scrape_event(url):
     }
 
     # resp = requests.post(api_url, data=payload, headers=HEADERS)    
-    resp = s.post(api_url, data=payload)
+    resp = s.post(api_url, data=payload, timeout=TIMEOUT)
 
     if resp.status_code != 200: 
         return None
@@ -77,7 +83,7 @@ def scrape_event(url):
     # title -> #seo_h1_tag
     # date  -> #event_time_info ._2ycp
     event_url = '{}events/{}'.format(FB_URL, _id)
-    resp = s.get(event_url)
+    resp = s.get(event_url, timeout=TIMEOUT)
     html = resp.text
     soup = BeautifulSoup(html, 'html.parser')
 
@@ -153,7 +159,7 @@ def scraped_hosts(_id):
     next_page = True
     while next_page:
 
-        resp = s.post(api_url, data=payload)
+        resp = s.post(api_url, data=payload, timeout=TIMEOUT)
         if resp.status_code != 200: 
             break
 
@@ -190,7 +196,7 @@ def scrape_host_info(_id):
     s.headers.update(HEADERS)
 
     url = 'https://www.facebook.com/pg/{}/about/'.format(_id)
-    resp = s.get(url)
+    resp = s.get(url, timeout=TIMEOUT)
 
     if resp.status_code != 200:
         return info
@@ -203,6 +209,7 @@ def scrape_host_info(_id):
     uregex = re.compile(r'u\=([^&]+)\&')
     pregex = re.compile(r'Call (.+)')
 
+    websites = set()
     info['websites'] = []
     info['email'] = None
     info['phone'] = None
@@ -222,7 +229,10 @@ def scrape_host_info(_id):
         if match: 
             url = match.group(1)
             url = urllib.parse.unquote(url)
-            info['websites'].append(url)
+            url = url.lower()
+            websites.add(url)
+
+    info['websites'] = list(websites)
 
     items = container.select('._4bl9')
     for i in items:
@@ -239,7 +249,7 @@ def extract_place_id(url):
     s = requests.Session()
     s.headers.update(HEADERS)
 
-    resp = requests.get(url)
+    resp = requests.get(url, timeout=TIMEOUT)
     html = resp.text
 
     # I believe we don't have to do this
