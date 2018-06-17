@@ -3,6 +3,7 @@
 import requests
 import re
 import json
+import urllib
 
 from bs4 import BeautifulSoup
 
@@ -136,16 +137,18 @@ def scrape_event(url):
 
     return data
 
-def scrape_events(_id):
+def scraped_hosts(_id):
 
     s = requests.Session()
     s.headers.update(HEADERS)
 
-    extracted = []
+    url = 'https://www.facebook.com/{}/'.format(_id)
+    result = { 'id': _id, 'url': url, 'events': [] }
     variables = { 'pageID': _id } 
 
     api_url = 'https://www.facebook.com/api/graphql/' 
-    payload = { 'variables': json.dumps(variables), 'doc_id': 1934177766626784 }
+    payload = { 'variables': json.dumps(variables), 
+        'doc_id': 1934177766626784 }
 
     next_page = True
     while next_page:
@@ -161,7 +164,7 @@ def scrape_events(_id):
         edges = events['edges']
 
         for e in edges:
-            extracted.append(deep_get(e, 'node.id'))
+            result['events'].append(deep_get(e, 'node.id'))
 
         page_info = events['page_info']
         end_cursor = page_info['end_cursor']
@@ -171,9 +174,65 @@ def scrape_events(_id):
         variables['cursor'] = end_cursor
 
         payload['variables'] = json.dumps(variables)
-        payload['doc_id'] = 1595001790625344 
+        payload['doc_id'] = 1595001790625344
 
-    return extracted
+    # Extract extra info from the host url
+    info = scrape_host_info(_id)
+    result.update(info)
+
+    return result
+
+def scrape_host_info(_id):
+
+    info = {}
+
+    s = requests.Session()
+    s.headers.update(HEADERS)
+
+    url = 'https://www.facebook.com/pg/{}/about/'.format(_id)
+    resp = s.get(url)
+
+    if resp.status_code != 200:
+        return info
+
+    html = resp.text
+    soup = BeautifulSoup(html, 'html.parser')
+    container = soup.find(id='content_container')
+    anchors = container.select('._4bl9 a')
+    
+    uregex = re.compile(r'u\=([^&]+)\&')
+    pregex = re.compile(r'Call (.+)')
+
+    info['websites'] = []
+    info['email'] = None
+    info['phone'] = None
+
+    # Find emails
+    for a in anchors:
+        href = a['href']
+        match = MAIL_REGEX.search(href)
+        if match:
+            info['email'] = match.group()
+            break
+
+    # Find Websites
+    for a in anchors:
+        href = a['href']
+        match = uregex.search(href)
+        if match: 
+            url = match.group(1)
+            url = urllib.parse.unquote(url)
+            info['websites'].append(url)
+
+    items = container.select('._4bl9')
+    for i in items:
+        text = i.get_text()
+        match = pregex.match(text)
+        if match:
+            info['phone'] = match.group(1)
+            break
+
+    return info
 
 def extract_place_id(url):
 
@@ -205,18 +264,26 @@ class EventSpider:
         self.scraped_events = set()
 
         self.rotation = 1
-        self.result = []
+        self.r_events = []
+        self.r_hosts = []
 
     def scrape_pendings(self, limit=50):
 
-        self.result = []
+        self.r_events = []
+        self.r_hosts = []
 
         print('Extracting events...')
         hosts = tuple(self.pending_hosts)
         count = len(hosts)
         for host in hosts:
             print('Extracting host:', host, count)
-            events = scrape_events(host)
+            data = scraped_hosts(host)
+            events = []
+
+            if data:
+                self.r_hosts.append(data)
+                events = data.get('events', [])
+
             self.pending_events |= set(events) - self.scraped_events
             self.pending_hosts.discard(host)
             self.scraped_hosts.add(host)
@@ -231,22 +298,19 @@ class EventSpider:
         for e in events:
             print('Scraping event', e, count)
             data = scrape_event(e)
-            _ids = []
+            hosts_id = []
 
             if data:
-                self.result.append(data)
-                _ids = [ host['id'] for host in data.get('hosts', []) ]
+                self.r_events.append(data)
+                hosts_id = [ host['id'] for host in data.get('hosts', []) ]
 
-            self.pending_hosts |= set(_ids) - self.scraped_hosts
+            self.pending_hosts |= set(hosts_id) - self.scraped_hosts
             self.pending_events.discard(e)
             self.scraped_events.add(e)
             count -= 1
 
             if len(events) - count >= limit:
                 break
-
-        return self.result
-
             
     def expand_search(self):
 
@@ -260,11 +324,13 @@ class EventSpider:
             try:
                 self.scrape_pendings()
             except Exception as e:
-                print(e)
+                raise(e)
                 keep = False
             finally:
-                filename = 'results/{}.json'.format(self.rotation)
-                write_json(filename, self.result)
+                filename1 = 'results/events_{}.json'.format(self.rotation)
+                filename2 = 'results/hosts_{}.json'.format(self.rotation)
+                write_json(filename1, self.r_events)
+                write_json(filename2, self.r_hosts)
                 self.rotation += 1
                 # I should probably save state here too...
 
