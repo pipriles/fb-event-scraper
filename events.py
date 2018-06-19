@@ -134,16 +134,35 @@ def scrape_event(url):
     phone = match.group() if match else None
     print(phone)
 
+    # Extract tags
+    scripts = soup('script')
+    keyword_regex = re.compile(r'\{\s*name\:\s*\"([^\"]*)\"\s*\,\s*token')
+    for script in scripts:
+        text = script.get_text()
+        match = keyword_regex.findall(text)
+        if match: break
+
+    tags = match
+
+    # Request details
+    payload['doc_id'] = 1640160956043533
+    details = None
+
+    resp = s.post(api_url, data=payload, timeout=TIMEOUT)
+
+    if resp.status_code == 200: 
+        details = deep_get(resp.json(), 'data.event.details.text')
+
     # I should probably change this to use only dict...
     keys = [ 'id', 'url', 'name', 'category', 'profilePicture' ]
     hosts = [ dict_by_keys(d, keys) for d in hosts ]
 
-    keys = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'hosts' ]
-    data = dict_by_keys([ _id, title,  date, addr, email, page, phone, hosts ], keys)
+    keys = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'hosts', 'details', 'tags' ]
+    data = dict_by_keys([ _id, title,  date, addr, email, page, phone, hosts, details, tags ], keys)
 
     return data
 
-def scraped_hosts(_id):
+def scrape_host(_id):
 
     s = requests.Session()
     s.headers.update(HEADERS)
@@ -287,7 +306,7 @@ class EventSpider:
         count = len(hosts)
         for host in hosts:
             print('Extracting host:', host, count)
-            data = scraped_hosts(host)
+            data = scrape_host(host)
             events = []
 
             if data:
@@ -334,7 +353,9 @@ class EventSpider:
             try:
                 self.scrape_pendings()
             except Exception as e:
-                raise(e)
+                print(e)
+                # keep = False
+            except KeyboardInterrupt:
                 keep = False
             finally:
                 filename1 = 'results/events_{}.json'.format(self.rotation)
