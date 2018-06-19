@@ -11,8 +11,12 @@ def read_json(filename):
     with open(filename, encoding='utf8') as f:
         data = json.load(f)
 
-    keys  = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone' ]
+    keys  = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'details' ]
     events = [ { k: d[k] for k in keys } for d in data ]
+
+    for e, d in zip(events, data):
+        e['details'] = ' '.join(d['details'].split())
+        e['tags'] = ', '.join(d['tags'])
 
     frame = pd.DataFrame.from_dict(events)
     hosts = pd.io.json.json_normalize(data, 
@@ -56,7 +60,7 @@ def main():
     frame2 = pd.concat(hosts_frames)
     frame2 = frame2.drop_duplicates(subset=['id', 'event_id'])
 
-    columns = [ 'id', 'title', 'date', 'address', 'email', 'phone', 'page' ]
+    columns = [ 'id', 'title', 'date', 'address', 'email', 'phone', 'page', 'details', 'tags' ]
     frame1[columns].to_csv('events.csv', index=False)
 
     columns = [ 'event_id', 'id', 'url', 'name', 'category',
