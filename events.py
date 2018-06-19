@@ -4,12 +4,16 @@
 # And maybe a way rotate ip
 # Find out why script freezes
 # - Maybe a facebook ban
+# I have to extract image src and video
+# Extract event status
+# And extract directions page
 
 import requests
 import re
 import json
 import urllib
 import fblogin as fb
+import util
 
 from bs4 import BeautifulSoup
 
@@ -58,6 +62,7 @@ def extract_place(data):
 def dict_by_keys(data, keys):
     return { k: v for k, v in zip(keys, data) }
 
+@util.safe_mode
 def scrape_event(url, session=requests.Session()):
 
     session.headers.update(HEADERS)
@@ -139,7 +144,6 @@ def scrape_event(url, session=requests.Session()):
         text = script.get_text()
         match = keyword_regex.findall(text)
         if match: break
-
     tags = match
 
     # Request details
@@ -147,9 +151,11 @@ def scrape_event(url, session=requests.Session()):
     details = None
 
     resp = session.post(API_URL, data=payload, timeout=TIMEOUT)
-
     if resp.status_code == 200: 
         details = deep_get(resp.json(), 'data.event.details.text')
+
+    # Map Url
+    # Extract img
 
     # I should probably change this to use only dict...
     keys = [ 'id', 'url', 'name', 'category', 'profilePicture' ]
@@ -160,6 +166,7 @@ def scrape_event(url, session=requests.Session()):
 
     return data
 
+@util.safe_mode
 def scrape_host(_id, session=requests.Session()):
 
     session.headers.update(HEADERS)
