@@ -185,9 +185,6 @@ def scrape_host(_id, session=requests.Session()):
         if resp.status_code != 200: 
             break
 
-        with open('debug.html', 'w', encoding='utf8') as f:
-            f.write(resp.text)
-
         data = resp.json()
         events = deep_get(data, 'data.page.upcoming_events')
         if events is None: break
