@@ -9,9 +9,11 @@ import requests
 import re
 import json
 import urllib
+import fblogin as fb
 
 from bs4 import BeautifulSoup
 
+API_URL = 'https://www.facebook.com/api/graphql/'
 TIMEOUT = 5
 HEADERS = { 
     'accept-language': 'en-US,en;q=0.9', 
@@ -56,21 +58,17 @@ def extract_place(data):
 def dict_by_keys(data, keys):
     return { k: v for k, v in zip(keys, data) }
 
-def scrape_event(url):
+def scrape_event(url, session=requests.Session()):
 
-    s = requests.Session()
-    s.headers.update(HEADERS)
-
+    session.headers.update(HEADERS)
     _id = event_id(url)
 
-    api_url = 'https://www.facebook.com/api/graphql/'
     payload = { 
         'variables': '{{"eventID": {}}}'.format(_id), 
         'doc_id': 1634531006589990 
     }
 
-    # resp = requests.post(api_url, data=payload, headers=HEADERS)    
-    resp = s.post(api_url, data=payload, timeout=TIMEOUT)
+    resp = session.post(API_URL, data=payload, timeout=TIMEOUT)
 
     if resp.status_code != 200: 
         return None
@@ -83,7 +81,7 @@ def scrape_event(url):
     # title -> #seo_h1_tag
     # date  -> #event_time_info ._2ycp
     event_url = '{}events/{}'.format(FB_URL, _id)
-    resp = s.get(event_url, timeout=TIMEOUT)
+    resp = session.get(event_url, timeout=TIMEOUT)
     html = resp.text
     soup = BeautifulSoup(html, 'html.parser')
 
@@ -148,7 +146,7 @@ def scrape_event(url):
     payload['doc_id'] = 1640160956043533
     details = None
 
-    resp = s.post(api_url, data=payload, timeout=TIMEOUT)
+    resp = session.post(API_URL, data=payload, timeout=TIMEOUT)
 
     if resp.status_code == 200: 
         details = deep_get(resp.json(), 'data.event.details.text')
@@ -162,25 +160,26 @@ def scrape_event(url):
 
     return data
 
-def scrape_host(_id):
+def scrape_host(_id, session=requests.Session()):
 
-    s = requests.Session()
-    s.headers.update(HEADERS)
+    session.headers.update(HEADERS)
 
     url = 'https://www.facebook.com/{}/'.format(_id)
     result = { 'id': _id, 'url': url, 'events': [] }
     variables = { 'pageID': _id } 
 
-    api_url = 'https://www.facebook.com/api/graphql/' 
     payload = { 'variables': json.dumps(variables), 
         'doc_id': 1934177766626784 }
 
     next_page = True
     while next_page:
 
-        resp = s.post(api_url, data=payload, timeout=TIMEOUT)
+        resp = session.post(API_URL, data=payload, timeout=TIMEOUT)
         if resp.status_code != 200: 
             break
+
+        with open('debug.html', 'w', encoding='utf8') as f:
+            f.write(resp.text)
 
         data = resp.json()
         events = deep_get(data, 'data.page.upcoming_events')
@@ -202,20 +201,18 @@ def scrape_host(_id):
         payload['doc_id'] = 1595001790625344
 
     # Extract extra info from the host url
-    info = scrape_host_info(_id)
+    info = scrape_host_info(_id, session)
     result.update(info)
 
     return result
 
-def scrape_host_info(_id):
+def scrape_host_info(_id, session=requests.Session()):
 
+    session.headers.update(HEADERS)
     info = {}
 
-    s = requests.Session()
-    s.headers.update(HEADERS)
-
     url = 'https://www.facebook.com/pg/{}/about/'.format(_id)
-    resp = s.get(url, timeout=TIMEOUT)
+    resp = session.get(url, timeout=TIMEOUT)
 
     if resp.status_code != 200:
         return info
@@ -263,12 +260,11 @@ def scrape_host_info(_id):
 
     return info
 
-def extract_place_id(url):
+def extract_place_id(url, session=requests.Session()):
 
-    s = requests.Session()
-    s.headers.update(HEADERS)
+    session.headers.update(HEADERS)
 
-    resp = requests.get(url, timeout=TIMEOUT)
+    resp = session.get(url, timeout=TIMEOUT)
     html = resp.text
 
     # I believe we don't have to do this
@@ -279,12 +275,14 @@ def extract_place_id(url):
     return match.group(1) if match else None
 
 def write_json(filename, data):
+    if not data: return
     with open(filename, 'w', encoding='utf8') as f:
         json.dump(data, f, indent=4)
 
 class EventSpider:
 
-    def __init__(self, pending_host=[], pending_events=[]):
+    def __init__(self, pending_host=[], 
+            pending_events=[], fb_s=requests.Session()):
 
         self.pending_hosts = set(pending_host)
         self.pending_events = set(pending_events)
@@ -296,6 +294,8 @@ class EventSpider:
         self.r_events = []
         self.r_hosts = []
 
+        self.fb_s = fb_s
+
     def scrape_pendings(self, limit=50):
 
         self.r_events = []
@@ -306,7 +306,7 @@ class EventSpider:
         count = len(hosts)
         for host in hosts:
             print('Extracting host:', host, count)
-            data = scrape_host(host)
+            data = scrape_host(host, self.fb_s)
             events = []
 
             if data:
@@ -326,7 +326,7 @@ class EventSpider:
         count = len(events)
         for e in events:
             print('Scraping event', e, count)
-            data = scrape_event(e)
+            data = scrape_event(e, self.fb_s)
             hosts_id = []
 
             if data:
@@ -346,6 +346,9 @@ class EventSpider:
         self.rotation = 1
         keep = True
 
+        efile = 'results/events_{}.json'
+        hfile = 'results/hosts{}.json'
+
         while keep and \
             ( self.pending_hosts or \
                 self.pending_events ): # Sad face
@@ -353,13 +356,13 @@ class EventSpider:
             try:
                 self.scrape_pendings()
             except Exception as e:
-                print(e)
+                raise(e)
                 # keep = False
             except KeyboardInterrupt:
                 keep = False
             finally:
-                filename1 = 'results/events_{}.json'.format(self.rotation)
-                filename2 = 'results/hosts_{}.json'.format(self.rotation)
+                filename1 = efile.format(self.rotation)
+                filename2 = hfile.format(self.rotation)
                 write_json(filename1, self.r_events)
                 write_json(filename2, self.r_hosts)
                 self.rotation += 1
@@ -367,11 +370,19 @@ class EventSpider:
 
 def main():
 
+    # Login flow
+    auth = 'oswald.capriles46@gmail.com ', input('Can i haz pass plz?\n')
+    fb_s = fb.login(*auth)
+
+    if fb_s is None:
+        print('Login fail!')
+        return
+
     print('Extracting place id...')
     url = 'https://www.facebook.com/umbrellabarattherock/'
-    _id = extract_place_id(url)
+    _id = extract_place_id(url, fb_s)
 
-    spider = EventSpider(pending_host=(_id,))
+    spider = EventSpider(pending_host=(_id,), fb_s=fb_s)
     spider.expand_search() # Keep searching until the end of the world
 
 if __name__ == '__main__':
