@@ -1,12 +1,12 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # I have to add random change user agent
 # And maybe a way rotate ip
 # Find out why script freezes
 # - Maybe a facebook ban
-# I have to extract image src and video
-# Extract event status
-# And extract directions page
+# I have to extract image src and video [X]
+# Extract event status [X]
+# And extract directions page [X]
 
 import requests
 import re
@@ -20,7 +20,7 @@ from bs4 import BeautifulSoup
 API_URL = 'https://www.facebook.com/api/graphql/'
 TIMEOUT = 5
 HEADERS = { 
-    'accept-language': 'en-US,en;q=0.9', 
+    'accept-language': 'en', 
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36', 
 }
 
@@ -155,14 +155,35 @@ def scrape_event(url, session=requests.Session()):
         details = deep_get(resp.json(), 'data.event.details.text')
 
     # Map Url
+    map_url = None
+    map_anchor = summary_soup.find("a", class_='_42ft')
+    if map_anchor: 
+        map_url = map_anchor["href"]
+        map_url = urllib.parse.unquote(map_url)
+        match = re.search(r'u\=(.+)', map_url)
+        map_url = match.group(1) if match else map_url
+
+    #Extract video
+    media = None
+    match = re.search(r'"hd_src":"([^"]*)"', html)
+    media = match.group(1).replace('\\','') if match else media
+
     # Extract img
+    if media is None:
+        images = soup.select("#event_header_primary img")
+        if images: media = images[0]["src"]
+
+    # Privacy
+    privacy = 'Private'
+    spans = soup.select("span[data-testid='event_permalink_privacy']")
+    if spans: privacy = spans[0].get_text()
 
     # I should probably change this to use only dict...
     keys = [ 'id', 'url', 'name', 'category', 'profilePicture' ]
     hosts = [ dict_by_keys(d, keys) for d in hosts ]
 
-    keys = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'hosts', 'details', 'tags' ]
-    data = dict_by_keys([ _id, title,  date, addr, email, page, phone, hosts, details, tags ], keys)
+    keys = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'hosts', 'details', 'tags', 'media', 'privacy', 'map_url' ]
+    data = dict_by_keys([ _id, title,  date, addr, email, page, phone, hosts, details, tags, media, privacy, map_url ], keys)
 
     return data
 
@@ -299,6 +320,7 @@ class EventSpider:
         self.r_hosts = []
 
         self.fb_s = fb_s
+        self.fb_s.headers.update(HEADERS)
 
     def scrape_pendings(self, limit=50):
 
@@ -375,18 +397,19 @@ class EventSpider:
 def main():
 
     # Login flow
-    auth = 'oswald.capriles46@gmail.com ', input('Can i haz pass plz?\n')
-    fb_s = fb.login(*auth)
+    #auth = 'oswald.capriles46@gmail.com ', input('Can i haz pass plz?\n')
+    #fb_s = fb.login(*auth)
 
-    if fb_s is None:
-        print('Login fail!')
-        return
+    #if fb_s is None:
+    #    print('Login fail!')
+    #    return
 
     print('Extracting place id...')
     url = 'https://www.facebook.com/umbrellabarattherock/'
-    _id = extract_place_id(url, fb_s)
+    _id = extract_place_id(url)
 
-    spider = EventSpider(pending_host=(_id,), fb_s=fb_s)
+    # spider = EventSpider(pending_host=(_id,))
+    spider = EventSpider(pending_events=('803767609807295',))
     spider.expand_search() # Keep searching until the end of the world
 
 if __name__ == '__main__':
