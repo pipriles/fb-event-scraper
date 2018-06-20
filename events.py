@@ -373,7 +373,7 @@ class EventSpider:
         keep = True
 
         efile = 'results/events_{}.json'
-        hfile = 'results/hosts{}.json'
+        hfile = 'results/hosts_{}.json'
 
         while keep and \
             ( self.pending_hosts or \

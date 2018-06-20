@@ -38,8 +38,8 @@ def main():
         return
 
     directory = sys.argv[1]
-    efiles = glob.glob(os.path.join(directory, 'events_*.json'))
-    hfiles = glob.glob(os.path.join(directory, 'hosts_*.json'))
+    efiles = glob.glob(os.path.join(directory, 'events*.json'))
+    hfiles = glob.glob(os.path.join(directory, 'hosts*.json'))
 
     event_frames = []
     hosts_frames = []
