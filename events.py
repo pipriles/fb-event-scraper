@@ -18,6 +18,7 @@ import getpass
 
 from bs4 import BeautifulSoup
 
+FB_URL = 'https://www.facebook.com/'
 API_URL = 'https://www.facebook.com/api/graphql/'
 TIMEOUT = 5
 HEADERS = { 
@@ -232,7 +233,7 @@ def scrape_host(_id, session=requests.Session()):
 
     return result
 
-def _extract_about(container):
+def _extract_about(container, session=requests.Session()):
 
     info = None
     uregex = re.compile(r'u\=([^&]+)\&')
@@ -245,10 +246,14 @@ def _extract_about(container):
         'websites': [], 
         'email': None, 
         'phone': None, 
-        'extra': [] 
+        'extra': [],
+        'story': None
     }
 
-    info = default if elems else None
+    if elems:
+        info = default
+        info['story'] = extract_history(container, session)
+
     for e in elems:
         # Get anchor tags inside ._4bl9 class tags
         anchor = e.find('a')
@@ -301,21 +306,28 @@ def scrape_host_about(_id, session=requests.Session()):
     if container:
         extracted = _extract_about(container)
 
-    if extracted:
-        return extracted
+    if not extracted:
+        extracted = {}
 
-    codes = soup.select('code')
-    for code in codes:
-        # Code string should be a comment
-        inner = code.string
-        inner = inner if inner else ''
-        comment = BeautifulSoup(inner, 'html.parser')
-        about = _extract_about(comment)
-        if about: 
-            extracted = about
-            break
+        codes = soup.select('code')
+        for code in codes:
+            # Code string should be a comment
+            inner = code.string
+            inner = inner if inner else ''
+            comment = BeautifulSoup(inner, 'html.parser')
+            about = _extract_about(comment, session)
+            if about: 
+                extracted = about
+                break
+
+    # Extract extra data
+    extracted['portraitUrl'] = extract_portrait(html)
 
     return extracted
+
+# Format string instead of concatenate
+# And use urljoin to safe concatenate url
+# Use resp.json if you can
 
 def extract_history(container, session=requests.Session()):
     story_link = None
@@ -323,15 +335,13 @@ def extract_history(container, session=requests.Session()):
     if story_achor: 
         story_href = story_achor['href']
         json = session.get("https://www.facebook.com"+story_href+"&__a=1")
-        story_link = re.search(r'"permalinkURI":"([^"]+)',json)
+        story_link = re.search(r'"permalinkURI":"([^"]+)', json.text)
         if story_link: story_link = "https://www.facebook.com" + story_link.group(1).replace('\\','')
     return story_link
 
 def extract_portrait(html):
-    portrait_img = None
     match = re.search(r'original:[^"]*"(https?[^"]*)',html)
-    if match: portrait_img = match.group(1)
-    return portrait_img
+    return match.group(1) if match else None
 
 def extract_place_id(url, session=requests.Session()):
 
@@ -458,11 +468,11 @@ def main():
 
     fb_s = login_flow()
 
-    print('Extracting place id...')
-    url = 'https://www.facebook.com/umbrellabarattherock/'
-    _id = extract_place_id(url, fb_s)
-
+    # print('Extracting place id...')
+    # url = 'https://www.facebook.com/umbrellabarattherock/'
+    # _id = extract_place_id(url, fb_s)
     # spider = EventSpider(pending_host=(_id,))
+
     spider = EventSpider(pending_events=('803767609807295',), fb_s=fb_s)
     spider.expand_search() # Keep searching until the end of the world
 
