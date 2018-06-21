@@ -317,6 +317,22 @@ def scrape_host_about(_id, session=requests.Session()):
 
     return extracted
 
+def extract_history(container, session=requests.Session()):
+    story_link = None
+    story_achor = container.select_one("#story-card a");
+    if story_achor: 
+        story_href = story_achor['href']
+        json = session.get("https://www.facebook.com"+story_href+"&__a=1")
+        story_link = re.search(r'"permalinkURI":"([^"]+)',json)
+        if story_link: story_link = "https://www.facebook.com" + story_link.group(1).replace('\\','')
+    return story_link
+
+def extract_portrait(html):
+    portrait_img = None
+    match = re.search(r'original:[^"]*"(https?[^"]*)',html)
+    if match: portrait_img = match.group(1)
+    return portrait_img
+
 def extract_place_id(url, session=requests.Session()):
 
     session.headers.update(HEADERS)
