@@ -227,64 +227,95 @@ def scrape_host(_id, session=requests.Session()):
         payload['doc_id'] = 1595001790625344
 
     # Extract extra info from the host url
-    info = scrape_host_info(_id, session)
+    info = scrape_host_about(_id, session)
     result.update(info)
 
     return result
 
-def scrape_host_info(_id, session=requests.Session()):
+def _extract_about(container):
 
+    info = None
+    uregex = re.compile(r'u\=([^&]+)\&')
+    pregex = re.compile(r'Call (.+)')
+
+    websites = set()
+    elems = container.select('._4bl9')
+
+    default = { 
+        'websites': [], 
+        'email': None, 
+        'phone': None, 
+        'extra': [] 
+    }
+
+    info = default if elems else None
+    for e in elems:
+        # Get anchor tags inside ._4bl9 class tags
+        anchor = e.find('a')
+        if anchor:
+            href = anchor['href']
+
+            # Find emails
+            match = MAIL_REGEX.search(href)
+            if match:
+                info['email'] = match.group()
+                continue
+
+            # Find Websites
+            match = uregex.search(href)
+            if match: 
+                url = match.group(1)
+                url = urllib.parse.unquote(url)
+                url = url.lower()
+                websites.add(url)
+                continue
+
+        text  = e.get_text(' | ', strip=True)
+        match = pregex.match(text)
+
+        # Match Phone Number
+        if match:
+            info['phone'] = match.group(1)
+            continue
+
+        info['websites'] = list(websites)
+        info['extra'].append(text)
+
+    return info
+
+def scrape_host_about(_id, session=requests.Session()):
+    
     session.headers.update(HEADERS)
-    info = {}
+    extracted = {}
 
     url = 'https://www.facebook.com/pg/{}/about/'.format(_id)
     resp = session.get(url, timeout=TIMEOUT)
 
     if resp.status_code != 200:
-        return info
-
+        return extracted
+    
     html = resp.text
     soup = BeautifulSoup(html, 'html.parser')
     container = soup.find(id='content_container')
-    anchors = container.select('._4bl9 a')
-    
-    uregex = re.compile(r'u\=([^&]+)\&')
-    pregex = re.compile(r'Call (.+)')
 
-    websites = set()
-    info['websites'] = []
-    info['email'] = None
-    info['phone'] = None
+    if container:
+        extracted = _extract_about(container)
 
-    # Find emails
-    for a in anchors:
-        href = a['href']
-        match = MAIL_REGEX.search(href)
-        if match:
-            info['email'] = match.group()
+    if extracted:
+        return extracted
+
+    codes = soup.select('code')
+    for code in codes:
+        # Code string should be a comment
+        inner = code.string
+        inner = inner if inner else ''
+        comment = BeautifulSoup(inner, 'html.parser')
+        about = _extract_about(comment)
+        if about: 
+            extracted = about
             break
 
-    # Find Websites
-    for a in anchors:
-        href = a['href']
-        match = uregex.search(href)
-        if match: 
-            url = match.group(1)
-            url = urllib.parse.unquote(url)
-            url = url.lower()
-            websites.add(url)
-
-    info['websites'] = list(websites)
-
-    items = container.select('._4bl9')
-    for i in items:
-        text = i.get_text()
-        match = pregex.match(text)
-        if match:
-            info['phone'] = match.group(1)
-            break
-
-    return info
+    return extracted
 
 def extract_place_id(url, session=requests.Session()):
 
@@ -395,16 +426,21 @@ class EventSpider:
                 self.rotation += 1
                 # I should probably save state here too...
 
-def main():
+# Move to fb module
+def login_flow():
 
-    # Login flow
     auth = 'oswald.capriles46@gmail.com ', \
             getpass.getpass('Can i haz pass plz?\n')
     fb_s = fb.login(*auth)
-
     if fb_s is None:
         print('Login fail!')
         return
+    print('Success!')
+    return fb_s
+
+def main():
+
+    fb_s = login_flow()
 
     print('Extracting place id...')
     url = 'https://www.facebook.com/umbrellabarattherock/'
@@ -413,39 +449,6 @@ def main():
     # spider = EventSpider(pending_host=(_id,))
     spider = EventSpider(pending_events=('803767609807295',), fb_s=fb_s)
     spider.expand_search() # Keep searching until the end of the world
-
-def fix_host_info():
-    
-    # Login flow
-    auth = 'oswald.capriles46@gmail.com ', \
-            getpass.getpass('Can i haz pass plz?\n')
-    fb_s = fb.login(*auth)
-    if fb_s is None:
-        print('Login fail!')
-        return
-    print('Success!')
-
-#    fb_s = requests.Session()
-
-    _id = '233220656885689'
-    url = 'https://www.facebook.com/pg/{}/about/'.format(_id)
-    resp = fb_s.get(url)
-    html = resp.text
-    
-    soup = BeautifulSoup(html, 'html.parser')
-    container = soup.find(id='content_container')
-    anchors = container.select('._4bl9 a')
-    codes = soup.select('code')
-
-    if not anchors:
-        # Use codes
-        pass
-
-    for x in codes:
-        yield x.string # Should be a comment
-
-    print('Anchors:', len(anchors) )
-    print('Codes:'  , len(codes  ) )
 
 if __name__ == '__main__':
     main()
