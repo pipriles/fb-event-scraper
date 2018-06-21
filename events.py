@@ -448,5 +448,5 @@ def fix_host_info():
     print('Codes:'  , len(codes  ) )
 
 if __name__ == '__main__':
-    fix_host_info()
+    main()
 
