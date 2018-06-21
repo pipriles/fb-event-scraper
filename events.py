@@ -286,6 +286,16 @@ def scrape_host_info(_id, session=requests.Session()):
 
     return info
 
+def extract_history(container, session=requests.Session()):
+    story_link = None
+    story_achor = container.select_one("#story-card a");
+    if story_achor: 
+        story_href = story_achor['href']
+        json = session.get("https://www.facebook.com"+story_href+"&__a=1")
+        story_link = "https://www.facebook.com" + re.search(r'"permalinkURI":"([^"]+)',json).group(1).replace('\\','')
+    return story_link
+
+
 def extract_place_id(url, session=requests.Session()):
 
     session.headers.update(HEADERS)
