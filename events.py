@@ -14,6 +14,7 @@ import json
 import urllib
 import fblogin as fb
 import util
+import getpass
 
 from bs4 import BeautifulSoup
 
@@ -397,21 +398,55 @@ class EventSpider:
 def main():
 
     # Login flow
-    #auth = 'oswald.capriles46@gmail.com ', input('Can i haz pass plz?\n')
-    #fb_s = fb.login(*auth)
+    auth = 'oswald.capriles46@gmail.com ', \
+            getpass.getpass('Can i haz pass plz?\n')
+    fb_s = fb.login(*auth)
 
-    #if fb_s is None:
-    #    print('Login fail!')
-    #    return
+    if fb_s is None:
+        print('Login fail!')
+        return
 
     print('Extracting place id...')
     url = 'https://www.facebook.com/umbrellabarattherock/'
-    _id = extract_place_id(url)
+    _id = extract_place_id(url, fb_s)
 
     # spider = EventSpider(pending_host=(_id,))
-    spider = EventSpider(pending_events=('803767609807295',))
+    spider = EventSpider(pending_events=('803767609807295',), fb_s=fb_s)
     spider.expand_search() # Keep searching until the end of the world
 
+def fix_host_info():
+    
+    # Login flow
+    auth = 'oswald.capriles46@gmail.com ', \
+            getpass.getpass('Can i haz pass plz?\n')
+    fb_s = fb.login(*auth)
+    if fb_s is None:
+        print('Login fail!')
+        return
+    print('Success!')
+
+#    fb_s = requests.Session()
+
+    _id = '233220656885689'
+    url = 'https://www.facebook.com/pg/{}/about/'.format(_id)
+    resp = fb_s.get(url)
+    html = resp.text
+    
+    soup = BeautifulSoup(html, 'html.parser')
+    container = soup.find(id='content_container')
+    anchors = container.select('._4bl9 a')
+    codes = soup.select('code')
+
+    if not anchors:
+        # Use codes
+        pass
+
+    for x in codes:
+        yield x.string # Should be a comment
+
+    print('Anchors:', len(anchors) )
+    print('Codes:'  , len(codes  ) )
+
 if __name__ == '__main__':
-    main()
+    fix_host_info()
 
