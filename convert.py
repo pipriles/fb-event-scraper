@@ -11,7 +11,7 @@ def read_json(filename):
     with open(filename, encoding='utf8') as f:
         data = json.load(f)
 
-    keys  = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'details' ]
+    keys  = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'details', 'privacy', 'media', 'map_url' ]
     events = [ { k: d[k] for k in keys } for d in data ]
 
     for e, d in zip(events, data):
@@ -24,11 +24,18 @@ def read_json(filename):
 
     return frame, hosts
 
+def _extra_text(l):
+    try:
+        return ' \ '.join(l)
+    except TypeError:
+        return l
+
 def read_hosts(filename):
 
-    data = pd.read_json(filename, dtype=False)
-    columns = [ 'id', 'url', 'email', 'phone' ]
+    data = pd.read_json(filename, dtype=object)
+    columns = [ 'id', 'url', 'email', 'phone', 'story', 'portraitUrl', 'extra' ]
     websites = data.websites.apply(pd.Series)
+    data.extra = data.extra.apply(_extra_text)
     return pd.concat([data[columns], websites], axis=1)
 
 def main():
@@ -60,7 +67,7 @@ def main():
     frame2 = pd.concat(hosts_frames)
     frame2 = frame2.drop_duplicates(subset=['id', 'event_id'])
 
-    columns = [ 'id', 'title', 'date', 'address', 'email', 'phone', 'page', 'details', 'tags' ]
+    columns = [ 'id', 'title', 'date', 'address', 'email', 'phone', 'page', 'details', 'tags', 'privacy', 'media', 'map_url' ]
     frame1[columns].to_csv('events.csv', index=False)
 
     columns = [ 'event_id', 'id', 'url', 'name', 'category',
