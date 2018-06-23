@@ -8,6 +8,7 @@
 # Extract event status [X]
 # And extract directions page [X]
 
+import location
 import requests
 import re
 import json
@@ -158,13 +159,17 @@ def scrape_event(url, session=requests.Session()):
 
     # Map Url
     map_url = None
+    CC = None
     map_anchor = summary_soup.find("a", class_='_42ft')
     if map_anchor: 
         map_url = map_anchor["href"]
         map_url = urllib.parse.unquote(map_url)
         match = re.search(r'u\=(.+)', map_url)
-        map_url = match.group(1) if match else map_url
-
+        if match:
+            map_url = match.group(1)
+            CC = location.country_location(map_url) 
+            
+        
     #Extract video
     media = None
     match = re.search(r'"hd_src":"([^"]*)"', html)
@@ -184,8 +189,8 @@ def scrape_event(url, session=requests.Session()):
     keys = [ 'id', 'url', 'name', 'category', 'profilePicture' ]
     hosts = [ dict_by_keys(d, keys) for d in hosts ]
 
-    keys = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'hosts', 'details', 'tags', 'media', 'privacy', 'map_url' ]
-    data = dict_by_keys([ _id, title,  date, addr, email, page, phone, hosts, details, tags, media, privacy, map_url ], keys)
+    keys = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'hosts', 'details', 'tags', 'media', 'privacy', 'map_url', "CC" ]
+    data = dict_by_keys([ _id, title,  date, addr, email, page, phone, hosts, details, tags, media, privacy, map_url, CC ], keys)
 
     return data
 
@@ -455,7 +460,7 @@ class EventSpider:
 # Move to fb module
 def login_flow():
 
-    auth = 'oswald.capriles46@gmail.com ', \
+    auth = 'potopelao2@gmail.com ', \
             getpass.getpass('Can i haz pass plz?\n')
     fb_s = fb.login(*auth)
     if fb_s is None:
@@ -473,7 +478,7 @@ def main():
     # _id = extract_place_id(url, fb_s)
     # spider = EventSpider(pending_host=(_id,))
 
-    spider = EventSpider(pending_events=('803767609807295',), fb_s=fb_s)
+    spider = EventSpider(pending_events=('172070603457390',), fb_s=fb_s)
     spider.expand_search() # Keep searching until the end of the world
 
 if __name__ == '__main__':
