@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import pandas as pd
 import json
@@ -6,20 +6,41 @@ import sys
 import glob
 import os
 
+#Countries Filter Set only usa, contry code
+countries = ["US"]
+
+#Discard Countries 
+def data_discard(data):
+    accepted = []
+    unknown = []
+    no_interested = []
+
+    for ev in data:
+        if ev['CC']:
+            if ev['CC'] in countries:
+                accepted.append(ev)
+            else:
+                no_interested.append(ev)
+        else:
+            unknown.append(ev)
+    return accepted,unknown,no_interested
+
 def read_json(filename):
 
     with open(filename, encoding='utf8') as f:
         data = json.load(f)
 
-    keys  = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'details', 'privacy', 'media', 'map_url' ]
-    events = [ { k: d[k] for k in keys } for d in data ]
+    accepted,unknown,no_interested = data_discard(data) #now only using accepted, need to create more csv
 
-    for e, d in zip(events, data):
+    keys  = [ 'id', 'title', 'date', 'address', 'email', 'page', 'phone', 'details', 'privacy', 'media', 'map_url', 'CC' ]
+    events = [ { k: d[k] for k in keys } for d in accepted ]
+
+    for e, d in zip(events, accepted):
         e['details'] = ' '.join(d['details'].split())
         e['tags'] = ', '.join(d['tags'])
 
     frame = pd.DataFrame.from_dict(events)
-    hosts = pd.io.json.json_normalize(data, 
+    hosts = pd.io.json.json_normalize(accepted, 
             record_path='hosts', meta=['id'], meta_prefix='event_')
 
     return frame, hosts
