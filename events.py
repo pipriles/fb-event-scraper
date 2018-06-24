@@ -326,13 +326,31 @@ def scrape_host_about(_id, session=requests.Session()):
                 break
 
     # Extract extra data
-    extracted['portraitUrl'] = extract_portrait(html)
+    portrait_video_url = scrape_host_video(html, session)
+    if portrait_video_url:
+        extracted['portraitUrl'] = portrait_video_url
+    else:
+        extracted['portraitUrl'] = extract_portrait(html)
 
     return extracted
 
 # Format string instead of concatenate
 # And use urljoin to safe concatenate url
 # Use resp.json if you can
+def scrape_host_video(html, session=requests.Session()):
+    video_url= None
+    data = {'__a':'1'}
+    url = 'https://www.facebook.com/pages/profile/cover_video_data/?video_id='
+    match = re.search(r'videoID:"([0-9][^"]*)',html)
+    if match:
+        video_id = match.group(1)
+        url = url + video_id
+        response = session.post(url, data)
+        match = re.search(r'"hd_src":"([^"]*)', response.text)
+        if match:
+            video_url = match.group(1)
+            video_url = video_url.replace('\\','')
+    return video_url
 
 def extract_history(container, session=requests.Session()):
     story_link = None
@@ -478,7 +496,7 @@ def main():
     # _id = extract_place_id(url, fb_s)
     # spider = EventSpider(pending_host=(_id,))
 
-    spider = EventSpider(pending_events=('172070603457390',), fb_s=fb_s)
+    spider = EventSpider(pending_events=('803767609807295',), fb_s=fb_s)
     spider.expand_search() # Keep searching until the end of the world
 
 if __name__ == '__main__':
