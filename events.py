@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# sudo apt-get install python3-pip
+# sudo pip3 install reverse_geocoder
+
 # I have to add random change user agent
 # And maybe a way rotate ip
 # Find out why script freezes
@@ -16,8 +19,33 @@ import urllib
 import fblogin as fb
 import util
 import getpass
+import os
 
 from bs4 import BeautifulSoup
+
+E_OK = 0
+E_ERR = 1
+SEPARATOR = ';'
+
+# user specific configuration
+AUTH_EMAIL = 'MYEMAIL@MYDOMAIN.COM'
+EXPAND_HOSTS = False
+HOST_LIST = [ 'https://www.facebook.com/moussetofficial', \
+              'https://www.facebook.com/moullinex', \
+              'https://www.facebook.com/xinobimusic', \
+              'https://www.facebook.com/pg/claptone.official', \
+              'https://www.facebook.com/realblackcoffee', \
+              'https://www.facebook.com/drpackeredits', \
+              'https://www.facebook.com/MastersAtWorkOfficial', \
+              'https://www.facebook.com/armandvanhelden', \
+              'https://www.facebook.com/cassiusofficial/', \
+              'https://www.facebook.com/fennecandwolf', \
+              'https://www.facebook.com/DimitriFromParisOfficial', \
+              'https://www.facebook.com/aeroplanemusiclove', \
+              'https://www.facebook.com/disclosureuk', \
+              'https://www.facebook.com/Nicolas-Jaar-15727540611', \
+              'https://www.facebook.com/tensnake', \
+            ]
 
 FB_URL = 'https://www.facebook.com/'
 API_URL = 'https://www.facebook.com/api/graphql/'
@@ -96,7 +124,7 @@ def scrape_event(url, session=requests.Session()):
     # Title
     ttag = soup.find(id='seo_h1_tag')
     title = ttag.get_text().strip() if ttag else ''
-    print(title)
+    #print(title)
 
     # Uncomment inside code tag
     # code = soup.select('code')
@@ -110,12 +138,12 @@ def scrape_event(url, session=requests.Session()):
     # Date
     dtag = summary_soup.select_one('#event_time_info ._2ycp')
     date = dtag['content'] if dtag else None
-    print(date)
+    #print(date)
 
     # Address
     atag = summary_soup.select_one('li._3xd0 div._5xhp')
     addr = atag.get_text().strip() if atag else None
-    print(addr)
+    #print(addr)
 
     # Venue
     vtag = summary_soup.select('li._3xd0 div._4bl9 > div > *')
@@ -126,19 +154,19 @@ def scrape_event(url, session=requests.Session()):
     match = MAIL_REGEX.search(desc)
     email = match.group() if match else None
     desc = MAIL_REGEX.sub('', desc)
-    print(email)
+    #print(email)
 
     # Website
     match = URL_REGEX.search(desc)
     page = match.group() if match else None
     desc = URL_REGEX.sub('', desc)
-    print(page)
+    #print(page)
 
     # Phone
     desc = re.sub(r'[^\+\d]', '', desc)
     match = re.search(r'\+?\d{4,}', desc)
     phone = match.group() if match else None
-    print(phone)
+    #print(phone)
 
     # Extract tags
     scripts = soup('script')
@@ -388,7 +416,7 @@ def write_json(filename, data):
 class EventSpider:
 
     def __init__(self, pending_host=[], 
-            pending_events=[], fb_s=requests.Session()):
+            pending_events=[], fb_s=requests.Session(), scrape_tag='DEFAULT_TAG'):
 
         self.pending_hosts = set(pending_host)
         self.pending_events = set(pending_events)
@@ -402,6 +430,8 @@ class EventSpider:
 
         self.fb_s = fb_s
         self.fb_s.headers.update(HEADERS)
+
+        self.scrape_tag = scrape_tag
 
     def scrape_pendings(self, limit=50):
 
@@ -438,7 +468,10 @@ class EventSpider:
 
             if data:
                 self.r_events.append(data)
-                hosts_id = [ host['id'] for host in data.get('hosts', []) ]
+                if EXPAND_HOSTS: # get new hosts recursively
+                    hosts_id = [ host['id'] for host in data.get('hosts', []) ]
+                else: # or stick to events at the host we are at
+                    hosts_id = hosts
 
             self.pending_hosts |= set(hosts_id) - self.scraped_hosts
             self.pending_events.discard(e)
@@ -468,36 +501,103 @@ class EventSpider:
             except KeyboardInterrupt:
                 keep = False
             finally:
-                filename1 = efile.format(self.rotation)
-                filename2 = hfile.format(self.rotation)
+                filename1 = efile.format(self.scrape_tag)
+                filename2 = hfile.format(self.scrape_tag)
                 write_json(filename1, self.r_events)
                 write_json(filename2, self.r_hosts)
                 self.rotation += 1
                 # I should probably save state here too...
 
+        return self.r_events
+
 # Move to fb module
 def login_flow():
 
-    auth = 'potopelao2@gmail.com ', \
+    auth = AUTH_EMAIL, \
             getpass.getpass('Can i haz pass plz?\n')
     fb_s = fb.login(*auth)
     if fb_s is None:
         print('Login fail!')
-        return
+        exit (E_ERR)
     print('Success!')
     return fb_s
+
+def render_result( json_list, csv = False ):
+
+    # process and present
+    json_list.sort(key=lambda k: k['date'], reverse=False)
+    print ('')
+    print ('Sorted list of events')
+    print ('')
+    print
+    for json_entry in json_list:
+        # format is from ... to, but we just want the initial date
+        mydate = json_entry['date'].split(' ')[0]
+        ev_title, ev_host, ev_address, ev_link, ev_date = extract_fields (json_entry)
+        if not csv:
+            print ('-------------------------------------------------------------------------------------')
+            print ('Title:    ' , ev_title)
+            print ('Host:     ' , ev_host)
+            print ('Address:  ' , ev_address)
+            print ('Link:     ' , ev_link)
+            print ('Date:     ' , ev_date)
+            print ('')
+        else:
+            print (ev_title,   SEPARATOR, \
+               ev_host,    SEPARATOR, \
+               ev_address, SEPARATOR, \
+               ev_link,    SEPARATOR, \
+               ev_date )
+
+def extract_fields ( json_entry ):
+
+    # extract fields handling cases where they are not present
+    try:
+        ev_title   = json_entry['title']
+    except Exception as e:
+        ev_title   = ''
+
+    try:
+        ev_host    = json_entry['hosts'][0]['name']
+    except Exception as e:
+        ev_host    = ''
+
+    try:
+        ev_address = json_entry['address']
+    except Exception as e:
+        ev_address = ''
+
+    try:
+        ev_link    = json_entry['hosts'][0]['url']
+    except Exception as e:
+        ev_link    = ''
+
+    try:
+        ev_date    = json_entry['date'].split(' ')[0]
+    except Exception as e:
+        ev_date    = ''
+
+    return ev_title, ev_host, ev_address, ev_link, ev_date
 
 def main():
 
     fb_s = login_flow()
+    json_list = []
 
-    # print('Extracting place id...')
-    # url = 'https://www.facebook.com/umbrellabarattherock/'
-    # _id = extract_place_id(url, fb_s)
-    # spider = EventSpider(pending_host=(_id,))
+    # get json results
+    for url in HOST_LIST:
+        print('Extracting place id...')
+        print (url)
+        host_name = os.path.basename(url)
+        _id = extract_place_id(url, fb_s)
+        spider = EventSpider(pending_host=(_id,), scrape_tag=host_name)
+        json_list = json_list + spider.expand_search()
 
-    spider = EventSpider(pending_events=('803767609807295',), fb_s=fb_s)
-    spider.expand_search() # Keep searching until the end of the world
+    # resulting output on screen friendly version
+    render_result( json_list, False )
+
+    # resulting output on CSV format
+    render_result( json_list, True )
 
 if __name__ == '__main__':
     main()
