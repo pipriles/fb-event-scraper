@@ -2,6 +2,12 @@
 
 import requests as rq
 import re
+import util
+import time
+import pickle
+
+from selenium import webdriver
+from selenium.common.exceptions import InvalidSessionIdException
 
 FB_URL = 'https://m.facebook.com/login.php'
 HEADERS = { 'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36', 'accept-language': 'en' }
@@ -20,12 +26,60 @@ class FbSession(rq.Session):
         resp = super().post(url, data, json, **kwargs)
         return resp
 
+def restore_cookies():
+    try:
+        with open('./cookies.pickle', 'rb') as fp:
+            return pickle.load(fp)
+    except FileNotFoundError:
+        return
+
+def save_cookies(cookies):
+    try:
+        with open('./cookies.pickle', 'wb') as fp:
+            return pickle.dump(cookies, fp)
+    except FileNotFoundError:
+        return
+
+def start_login_flow(email, password):
+
+    cookies = restore_cookies()
+
+    if cookies:
+        return cookies
+
+    driver = webdriver.Remote('http://127.0.0.1:9515')
+    driver.get(FB_URL)
+
+    elem = driver.find_element_by_css_selector('#m_login_email')
+    elem.send_keys(email)
+
+    elem = driver.find_element_by_css_selector('#m_login_password')
+    elem.send_keys(password)
+
+    elem = driver.find_element_by_css_selector('button[name="login"]')
+    elem.click()
+
+    while True:
+        try:
+            if driver.get_cookie('c_user'): break
+            time.sleep(.5)
+        except InvalidSessionIdException as e:
+            break
+
+    cookies = driver.get_cookies()
+    save_cookies(cookies)
+
+    return cookies
+
 def login(email, password):
 
-    payload = { 'email': email, 'pass': password }
+    cookies = start_login_flow(email, password)
+
     s = FbSession()
     s.headers.update(HEADERS)
-    s.post(FB_URL, data=payload)
+
+    for ck in cookies:
+        s.cookies.set(ck['name'], ck['value'])
 
     if not s.cookies.get('c_user'):
         return None

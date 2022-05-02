@@ -11,6 +11,7 @@
 # Extract event status [X]
 # And extract directions page [X]
 
+import os
 import location
 import requests
 import re
@@ -28,7 +29,7 @@ E_ERR = 1
 SEPARATOR = ';'
 
 # user specific configuration
-AUTH_EMAIL = 'MYEMAIL@MYDOMAIN.COM'
+AUTH_EMAIL = 'email@example.com'
 EXPAND_HOSTS = False
 HOST_LIST = [ 'https://www.facebook.com/moussetofficial', \
               'https://www.facebook.com/moullinex', \
@@ -401,6 +402,8 @@ def extract_place_id(url, session=requests.Session()):
     resp = session.get(url, timeout=TIMEOUT)
     html = resp.text
 
+    util.write_html(html)
+
     # I believe we don't have to do this
     soup = BeautifulSoup(html, 'html.parser')
     head = soup.find('head')
@@ -410,6 +413,7 @@ def extract_place_id(url, session=requests.Session()):
 
 def write_json(filename, data):
     if not data: return
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     with open(filename, 'w', encoding='utf8') as f:
         json.dump(data, f, indent=4)
 

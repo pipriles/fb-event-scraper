@@ -1,0 +1,15 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+beautifulsoup4 = "*"
+reverse-geocoder = "*"
+undetected-chromedriver = "*"
+selenium = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.8"

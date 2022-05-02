@@ -17,3 +17,6 @@ def safe_mode(func):
         return resp
     return wrapper
 
+def write_html(html):
+    with open('./preview.html', 'w', encoding='utf8') as fp:
+        fp.write(html)

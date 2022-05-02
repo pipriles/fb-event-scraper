@@ -105,3 +105,4 @@ venv.bak/
 
 results/*
 *.csv
+*.pickle
